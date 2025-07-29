@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 
 class LMAgent(DeductiveAgent):
-    def __init__(self, model_path: Path, decoding_size: int, beam_size: int, search_depth: int):
+    def __init__(self, model_path: Path, decoding_size: int, beam_size: int, search_depth: int, api_port: int = 8000):
         self.rule_buffer: list[Rule] = []
         self.application_buffer: list[Dependency] = []
         self.any_new_statement_has_been_added = True
@@ -39,7 +39,7 @@ class LMAgent(DeductiveAgent):
         
         # Set OpenAI's API key and API base to use vLLM's API server.
         openai_api_key = "EMPTY"
-        openai_api_base = "http://localhost:8000/v1"
+        openai_api_base = f"http://localhost:{api_port}/v1"
         self.client = OpenAI(
             api_key=openai_api_key,
             base_url=openai_api_base,
@@ -117,6 +117,62 @@ class LMAgent(DeductiveAgent):
         generated_output = generated_output.sequences[:, model_prompt_inputs.input_ids.shape[1]:]
         aux_dsl = self.tokenizer.batch_decode(generated_output, skip_special_tokens=True)
         return aux_dsl, scores
+    
+    def inference2_openai(self, query: str, response_prefix: str = '<aux>'):
+        """OpenAI API-based inference method, functionally equivalent to inference2"""
+        # Build complete prompt with response prefix
+        full_query = query + "\n" + response_prefix
+        
+        try:
+            model = self.client.models.list().data[0].id
+            chat_response = self.client.chat.completions.create(
+                # model="/c23474/home/zhuminfeng/LLaMA-Factory/saves/qwen2.5math1.5b-ag/full/sft",
+                model=model
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that generates geometric construction DSL code."},
+                    {"role": "user", "content": full_query}
+                ],
+                max_tokens=100,  # corresponds to max_new_tokens
+                temperature=0.0,
+                logprobs=True,
+                n=self.decoding_size,  # generate multiple candidates, corresponds to num_return_sequences
+                extra_body={
+                    'use_beam_search': True,
+                    'best_of': self.decoding_size,  # corresponds to num_beams
+                    'stop_token_ids': [2587],  # ';' token id, equivalent to eos_token_id
+                },
+            )
+            
+            # Extract multiple candidate results and corresponding scores
+            aux_dsl = []
+            scores = []
+            
+            for choice in chat_response.choices:
+                content = choice.message.content.strip() if choice.message.content else ""
+                aux_dsl.append(content)
+                
+                # Calculate scores: use average logprobs as confidence scores, simulating sequences_scores
+                if choice.logprobs and choice.logprobs.content:
+                    logprob_sum = sum(token.logprob for token in choice.logprobs.content if token.logprob is not None)
+                    token_count = len([token for token in choice.logprobs.content if token.logprob is not None])
+                    avg_logprob = logprob_sum / token_count if token_count > 0 else -10.0
+                    scores.append(avg_logprob)
+                else:
+                    scores.append(-10.0)  # default score
+            
+            # Pad with empty strings and default scores if insufficient candidates returned
+            while len(aux_dsl) < self.decoding_size:
+                aux_dsl.append("")
+                scores.append(-10.0)
+            
+            return aux_dsl, scores
+            
+        except Exception as e:
+            print(f"Warning: OpenAI inference failed: {e}")
+            # Return empty results to let search continue
+            empty_results = [""] * self.decoding_size
+            empty_scores = [-10.0] * self.decoding_size
+            return empty_results, empty_scores
     
     def run(self, proof: "ProofState", rules: list[Rule], timeout: int = 1800
         ) -> dict[str, Any]:
