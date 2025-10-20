@@ -53,6 +53,12 @@ class ConstantRatio(Predicate):
     def check_numerical(cls, statement: Statement) -> bool:
         args: tuple[Point, Point, Point, Point, Fraction] = statement.args
         a, b, c, d, r = args
+
+        ATOM = 1e-10
+        REL_TOL = 0.0001
+        def close_enough(a: float, b: float) -> bool:
+            return abs(a - b) < 4 * ATOM or abs(a - b) / max(abs(a), abs(b)) < REL_TOL
+        
         return close_enough(a.num.distance(b.num) / c.num.distance(d.num), float(r))
 
     @classmethod
