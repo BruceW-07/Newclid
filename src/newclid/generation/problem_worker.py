@@ -163,7 +163,7 @@ class GeometryProblemWorker:
     def _generate_possible_goals(solver):
         """Generate possible goals"""
         t = time.time()
-        # GeometryProblemWorker.all_possible_goals_by_ar(solver.proof.dep_graph)
+        GeometryProblemWorker.all_possible_goals_by_ar(solver.proof.dep_graph)
         possible_goals = [goal for goal in solver.proof.dep_graph.conclusions()]
         possible_goals = GeometryProblemWorker.filter.goal_filter(possible_goals, solver.proof.dep_graph)
         checkgoals_runtime = time.time() - t
