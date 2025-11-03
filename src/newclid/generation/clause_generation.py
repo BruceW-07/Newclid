@@ -160,7 +160,7 @@ class CompoundClauseGen:
         self.point_generator = PointGenerator()
         self.dep_graph = DependencyGraph(AlgebraicManipulator())
         self.symbols_graph = self.dep_graph.symbols_graph
-        max_basic_clause = int(0.15 * length)
+        max_basic_clause = 2
         res = []
         for clause_set in range(length):
             # step 1: add clause with basic 
